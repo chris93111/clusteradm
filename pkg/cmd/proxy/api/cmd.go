@@ -1,5 +1,5 @@
 // Copyright Contributors to the Open Cluster Management project
-package kubectl
+package api
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -36,11 +37,11 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 	var proxyConfig *proxyv1alpha1.ManagedProxyConfiguration
 
 	cmd := &cobra.Command{
-		Use:   "kubectl",
+		Use:   "api",
 		Short: "Use kubectl through cluster-proxy addon.",
 		Long:  "Use kubectl through cluster-proxy addon. (Only supports managed service account token as certificate.)",
 		Example: `If you want to get nodes on managed cluster named "cluster1", you can use the following command:
-		clusteradm proxy kubectl --cluster=cluster1 --sa=test --args="get nodes"`,
+		clusteradm proxy api --cluster=cluster1 --sa=test`,
 		SilenceUsage: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
@@ -70,12 +71,6 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 				return err
 			}
 			_, err = clusterClient.ManagedClusters().Get(context.TODO(), o.cluster, metav1.GetOptions{})
-			if err != nil {
-				return err
-			}
-
-			// Get managedServiceAccount
-			managedServiceAccountToken, err := getManagedServiceAccountToken(hubRestConfig, o.managedServiceAccount, o.cluster)
 			if err != nil {
 				return err
 			}
@@ -114,30 +109,23 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 				return errors.Wrapf(err, "failed listening http proxy server")
 			}
 
-			// Configure a customized kubeconfig amd write into /tmp dir with a random name
-			tmpKubeconfigFilePath, err := genTmpKubeconfig(o.cluster, managedServiceAccountToken)
-			if err != nil {
-				return err
-			}
-			//defer os.Remove(tmpKubeconfigFilePath)
-			klog.V(4).Infof("kubeconfig file path is %s", tmpKubeconfigFilePath)
-
-			// Using kubectl to access the managed cluster using the above customized kubeconfig
-			// We are using combinedoutput, so err msg should include in result, no need to handle err
-			result, _ := runKubectlCommand(tmpKubeconfigFilePath, o.kubectlArgs)
-			if _, err = streams.Out.Write(result); err != nil {
-				return errors.Wrap(err, "streams out write failed")
-			}
+			mux := http.NewServeMux()
+			pingh := http.HandlerFunc(ping)
+			mux.Handle("/ping", pingh)
+			http.ListenAndServe(":3000", mux)
+			klog.V(4).Infof("Starting proxy")
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&o.cluster, "cluster", "", "The name of the managed cluster")
-	cmd.Flags().StringVar(&o.managedServiceAccount, "sa", "", "The name of the managedServiceAccount")
-	cmd.Flags().StringVar(&o.kubectlArgs, "args", "", "The arguments to pass to kubectl")
 
 	return cmd
+}
+
+func ping(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("OK"))
 }
 
 func getProxyConfig(hubRestConfig *rest.Config, streams genericclioptions.IOStreams) (*proxyv1alpha1.ManagedProxyConfiguration, error) {

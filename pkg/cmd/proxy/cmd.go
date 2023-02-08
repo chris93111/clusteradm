@@ -6,6 +6,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"open-cluster-management.io/clusteradm/pkg/cmd/proxy/health"
 	"open-cluster-management.io/clusteradm/pkg/cmd/proxy/kubectl"
+	proxyapi "open-cluster-management.io/clusteradm/pkg/cmd/proxy/api"
 	genericclioptionsclusteradm "open-cluster-management.io/clusteradm/pkg/genericclioptions"
 )
 
@@ -19,6 +20,7 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 
 	cmd.AddCommand(health.NewCmd(clusteradmFlags, streams))
 	cmd.AddCommand(kubectl.NewCmd(clusteradmFlags, streams))
+	cmd.AddCommand(proxyapi.NewCmd(clusteradmFlags, streams))
 
 	return cmd
 }
