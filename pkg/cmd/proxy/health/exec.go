@@ -37,6 +37,9 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 	proxyutil "sigs.k8s.io/apiserver-network-proxy/pkg/util"
+
+	"sync/atomic"
+
 )
 
 func (o *Options) complete(cmd *cobra.Command, args []string) error {
@@ -125,13 +128,17 @@ func (o *Options) run(streams genericclioptions.IOStreams) error {
 
 	if !o.isProxyServerAddressProvided {
 		// run a local port-forward server if no proxy server specified
+		readiness := &atomic.Value{}
+		readiness.Store(true)
+		ctx := context.Background()
 		localProxy := util.NewRoundRobinLocalProxy(
 			hubRestConfig,
+			readiness,
 			proxyConfig.Spec.ProxyServer.Namespace,
 			common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
 			int32(o.proxyServerPort),
 		)
-		closeFn, err := localProxy.Listen()
+		closeFn, err := localProxy.Listen(ctx)
 		if err != nil {
 			return errors.Wrapf(err, "failed listening local proxy")
 		}

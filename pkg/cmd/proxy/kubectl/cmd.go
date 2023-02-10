@@ -27,6 +27,9 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	genericclioptionsclusteradm "open-cluster-management.io/clusteradm/pkg/genericclioptions"
 	msaClientv1alpha1 "open-cluster-management.io/managed-serviceaccount/pkg/generated/clientset/versioned"
+
+	"sync/atomic"
+
 )
 
 func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, streams genericclioptions.IOStreams) *cobra.Command {
@@ -87,13 +90,17 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 			}
 
 			// Run port-forward in goroutine
+			readiness := &atomic.Value{}
+			readiness.Store(true)
+			ctx := context.Background()
 			localProxy := util.NewRoundRobinLocalProxy(
 				hubRestConfig,
+				readiness,
 				proxyConfig.Spec.ProxyServer.Namespace,
 				common.LabelKeyComponentName+"="+common.ComponentNameProxyServer,
 				int32(8090), // TODO make it configurable or random later
 			)
-			portForwardClose, err := localProxy.Listen()
+			portForwardClose, err := localProxy.Listen(ctx)
 			if err != nil {
 				return errors.Wrapf(err, "failed listening local proxy")
 			}

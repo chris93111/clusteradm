@@ -28,6 +28,9 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	genericclioptionsclusteradm "open-cluster-management.io/clusteradm/pkg/genericclioptions"
 	msaClientv1alpha1 "open-cluster-management.io/managed-serviceaccount/pkg/generated/clientset/versioned"
+
+	"sync/atomic"
+
 )
 
 func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, streams genericclioptions.IOStreams) *cobra.Command {
@@ -38,10 +41,10 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 
 	cmd := &cobra.Command{
 		Use:   "api",
-		Short: "Use kubectl through cluster-proxy addon.",
-		Long:  "Use kubectl through cluster-proxy addon. (Only supports managed service account token as certificate.)",
+		Short: "Proxy for apiserver.",
+		Long:  "",
 		Example: `If you want to get nodes on managed cluster named "cluster1", you can use the following command:
-		clusteradm proxy api --cluster=cluster1 --sa=test`,
+		clusteradm proxy api --cluster=cluster1`,
 		SilenceUsage: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
@@ -82,13 +85,19 @@ func NewCmd(clusteradmFlags *genericclioptionsclusteradm.ClusteradmFlags, stream
 			}
 
 			// Run port-forward in goroutine
+
+			readiness := &atomic.Value{}
+			readiness.Store(true)
+			ctx := context.Background()
+
 			localProxy := util.NewRoundRobinLocalProxy(
 				hubRestConfig,
+				readiness,
 				proxyConfig.Spec.ProxyServer.Namespace,
 				common.LabelKeyComponentName+"="+common.ComponentNameProxyServer,
 				int32(8090), // TODO make it configurable or random later
 			)
-			portForwardClose, err := localProxy.Listen()
+			portForwardClose, err := localProxy.Listen(ctx)
 			if err != nil {
 				return errors.Wrapf(err, "failed listening local proxy")
 			}

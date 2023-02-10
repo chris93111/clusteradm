@@ -100,6 +100,7 @@ func (s *httpProxyServer) handle(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	target := fmt.Sprintf("https://%s", s.cluster)
+	//target := fmt.Sprintf("http://cluster-proxy-bd6b36076f28737bd01d1fc7537fa11a22e981f2d725047f8:9090")
 	apiserverURL, err := url.Parse(target)
 	if err != nil {
 		http.Error(wr, err.Error(), http.StatusBadRequest)
